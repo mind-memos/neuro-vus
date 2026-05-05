@@ -1,26 +1,450 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import variantData from "@/data/variants.json";
+import { aggregateScore, type Variant } from "@/lib/scoring";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   component: Index,
+  head: () => ({
+    meta: [
+      { title: "NeuroVUS — AI Variant Classifier for Rare Neurogenetic Disorders" },
+      { name: "description", content: "Clinician tool to classify variants of uncertain significance (VUS) for rare neurogenetic disorders, scored 1–10 with full literature evidence." },
+    ],
+  }),
 });
 
-// IMPORTANT: Replace this placeholder. For sites with multiple pages (About, Services, Contact, etc.),
-// create separate route files (about.tsx, services.tsx, contact.tsx) — don't put all pages in this file.
-function PlaceholderIndex() {
+const ALL_PARAMS = [
+  "Disease", "Gene", "Transcript ID", "Variant (cDNA)", "Protein", "Variant type",
+  "Genomic coordinates", "ClinVar variation ID", "VCV", "ClinVar Classification",
+  "Review Status", "Evaluation Date", "gnomAD Frequency", "Frequency score",
+  "Allele count", "SIFT", "PolyPhen", "CADD", "Protein domain", "PhyloP",
+  "PhastCons", "Inheritance", "Segregation Data", "De novo (Y/N)",
+  "No. of families", "Age of onset", "Phenotype description", "EEG Findings",
+] as const;
+
+// Map UI param name -> actual JSON key (handles trailing spaces in source data)
+const KEY_MAP: Record<string, string> = {
+  "Segregation Data": "Segregation Data ",
+};
+const keyOf = (p: string) => KEY_MAP[p] ?? p;
+
+const records = variantData as Variant[];
+
+function uniqueValues(field: string): string[] {
+  const k = keyOf(field);
+  const set = new Set<string>();
+  for (const r of records) {
+    const v = r[k];
+    if (v !== null && v !== undefined && v !== "") set.add(String(v));
+  }
+  return Array.from(set).sort();
+}
+
+// Decide if a parameter should render as a dropdown (low cardinality, categorical)
+const DROPDOWN_FIELDS = new Set([
+  "Disease", "Gene", "Transcript ID", "Variant type", "ClinVar Classification",
+  "Review Status", "Inheritance", "De novo (Y/N)", "Protein domain", "Frequency score",
+]);
+
+function matches(record: Variant, filters: Record<string, string>): boolean {
+  for (const [field, val] of Object.entries(filters)) {
+    if (!val) continue;
+    const recVal = record[keyOf(field)];
+    if (recVal === null || recVal === undefined) return false;
+    const a = String(recVal).toLowerCase().trim();
+    const b = val.toLowerCase().trim();
+    if (!a.includes(b)) return false;
+  }
+  return true;
+}
+
+function scoreColor(score: number): string {
+  if (score >= 7.5) return "bg-destructive text-destructive-foreground";
+  if (score >= 5.5) return "bg-amber-500 text-white";
+  if (score >= 4) return "bg-yellow-400 text-black";
+  return "bg-emerald-600 text-white";
+}
+
+function Index() {
+  const [selected, setSelected] = useState<string[]>(["Gene", "Variant (cDNA)"]);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState<Record<string, string> | null>(null);
+
+  const toggleParam = (p: string) => {
+    setSelected((s) =>
+      s.includes(p) ? s.filter((x) => x !== p) : [...s, p]
+    );
+    setFilters((f) => {
+      if (!f[p]) return f;
+      const { [p]: _, ...rest } = f;
+      return rest;
+    });
+  };
+
+  const matched = useMemo(() => {
+    if (!submitted) return [];
+    const active = Object.fromEntries(
+      Object.entries(submitted).filter(([, v]) => v && v.trim() !== "")
+    );
+    if (Object.keys(active).length === 0) return [];
+    return records.filter((r) => matches(r, active));
+  }, [submitted]);
+
+  const scoreInfo = useMemo(() => aggregateScore(matched), [matched]);
+
+  const onAnalyze = () => setSubmitted({ ...filters });
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/40">
+      {/* Header */}
+      <header className="border-b bg-card/60 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary text-primary-foreground grid place-items-center shadow">
+              <Dna className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">NeuroVUS Classifier</h1>
+              <p className="text-xs text-muted-foreground">AI-assisted classification of variants of uncertain significance</p>
+            </div>
+          </div>
+          <Badge variant="outline" className="gap-1">
+            <Activity className="h-3 w-3" /> {records.length} curated variant reports
+          </Badge>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8 grid gap-6 lg:grid-cols-[380px_1fr]">
+        {/* LEFT: Parameter selection */}
+        <aside className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Search className="h-4 w-4" /> Select input parameters
+              </CardTitle>
+              <CardDescription>
+                Tick any number of fields the clinician wants to search by, then enter values.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-72 pr-3">
+                <div className="grid grid-cols-1 gap-2">
+                  {ALL_PARAMS.map((p) => (
+                    <label
+                      key={p}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer text-sm"
+                    >
+                      <Checkbox
+                        checked={selected.includes(p)}
+                        onCheckedChange={() => toggleParam(p)}
+                      />
+                      <span>{p}</span>
+                    </label>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Enter values</CardTitle>
+              <CardDescription>{selected.length} parameter{selected.length === 1 ? "" : "s"} active</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {selected.length === 0 && (
+                <p className="text-sm text-muted-foreground">No parameters selected.</p>
+              )}
+              {selected.map((p) => {
+                const isDropdown = DROPDOWN_FIELDS.has(p);
+                const opts = isDropdown ? uniqueValues(p) : [];
+                return (
+                  <div key={p} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium">{p}</Label>
+                      <button
+                        onClick={() => toggleParam(p)}
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label={`Remove ${p}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    {isDropdown ? (
+                      <Select
+                        value={filters[p] ?? ""}
+                        onValueChange={(v) => setFilters((f) => ({ ...f, [p]: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={`Select ${p.toLowerCase()}…`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {opts.map((o) => (
+                            <SelectItem key={o} value={o}>{o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder={`Enter ${p.toLowerCase()}`}
+                        value={filters[p] ?? ""}
+                        onChange={(e) => setFilters((f) => ({ ...f, [p]: e.target.value }))}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
+              <Button
+                onClick={onAnalyze}
+                disabled={selected.length === 0}
+                className="w-full gap-2"
+              >
+                <Sparkles className="h-4 w-4" /> Analyze variant
+              </Button>
+              {(submitted || Object.keys(filters).length > 0) && (
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => { setFilters({}); setSubmitted(null); }}
+                >
+                  Reset
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </aside>
+
+        {/* RIGHT: Results */}
+        <section className="space-y-6">
+          {!submitted && <EmptyState />}
+
+          {submitted && matched.length === 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>No matching reports</CardTitle>
+                <CardDescription>
+                  No curated variants in the database match every filter you provided. Try removing or loosening some parameters.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+
+          {submitted && matched.length > 0 && (
+            <>
+              <ScoreCard score={scoreInfo} matchCount={matched.length} />
+              {matched.map((r, idx) => (
+                <ReportCard key={idx} record={r} />
+              ))}
+            </>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
 
-function Index() {
-  return <PlaceholderIndex />;
+function EmptyState() {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="py-16 flex flex-col items-center text-center gap-3">
+        <div className="h-14 w-14 rounded-full bg-primary/10 grid place-items-center text-primary">
+          <Dna className="h-7 w-7" />
+        </div>
+        <h2 className="text-lg font-semibold">Ready to classify a variant</h2>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Select one or more input parameters on the left (Disease, Gene, cDNA change, CADD, inheritance, phenotype…),
+          enter values, and run the analysis. The system will retrieve every matching curated report and return an
+          AI-derived pathogenicity score from 1 (most likely benign) to 10 (most likely pathogenic).
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateScore>; matchCount: number }) {
+  const pct = ((score.score - 1) / 9) * 100;
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Pathogenicity Score
+            </CardTitle>
+            <CardDescription>
+              Aggregated across {matchCount} matching report{matchCount === 1 ? "" : "s"} using ACMG-inspired evidence weighting.
+            </CardDescription>
+          </div>
+          <div className={`px-4 py-3 rounded-xl text-3xl font-bold tabular-nums ${scoreColor(score.score)}`}>
+            {score.score.toFixed(1)}
+            <span className="text-sm font-normal opacity-80"> /10</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <div className="h-3 w-full rounded-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-destructive relative">
+            <div
+              className="absolute -top-1 -translate-x-1/2 h-5 w-1.5 rounded-full bg-foreground shadow"
+              style={{ left: `${pct}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>1 — Benign</span>
+            <span>5.5 — VUS</span>
+            <span>10 — Pathogenic</span>
+          </div>
+        </div>
+        <div>
+          <Badge className="mb-2">{score.label}</Badge>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {score.reasons.map((r, i) => (
+              <div key={i} className="text-xs flex items-start gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5">
+                <span className={`shrink-0 font-mono px-1.5 py-0.5 rounded ${r.delta >= 0 ? "bg-destructive/10 text-destructive" : "bg-emerald-600/10 text-emerald-700"}`}>
+                  {r.delta >= 0 ? "+" : ""}{r.delta.toFixed(1)}
+                </span>
+                <div>
+                  <div className="font-medium">{r.criterion}</div>
+                  <div className="text-muted-foreground">{r.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const SECTIONS: { title: string; icon: React.ReactNode; fields: string[] }[] = [
+  {
+    title: "Variant Identification",
+    icon: <Dna className="h-4 w-4" />,
+    fields: ["Disease", "Gene", "Transcript ID", "Variant (cDNA)", "Protein", "Variant type",
+      "Genomic coordinates", "ClinVar variation ID", "VCV", "ClinVar Classification",
+      "Review Status", "Evaluation Date"],
+  },
+  {
+    title: "Population Data",
+    icon: <Activity className="h-4 w-4" />,
+    fields: ["gnomAD Frequency", "Frequency score", "Allele count"],
+  },
+  {
+    title: "Functional Prediction",
+    icon: <FlaskConical className="h-4 w-4" />,
+    fields: ["SIFT", "PolyPhen", "CADD"],
+  },
+  {
+    title: "Conservation / Domain",
+    icon: <FlaskConical className="h-4 w-4" />,
+    fields: ["Protein domain", "PhyloP", "PhastCons"],
+  },
+  {
+    title: "Genetic Evidence",
+    icon: <Dna className="h-4 w-4" />,
+    fields: ["Inheritance", "Segregation Data ", "De novo (Y/N)", "No. of families"],
+  },
+  {
+    title: "Literature Evidence",
+    icon: <BookOpen className="h-4 w-4" />,
+    fields: ["Study Title ", "PMID", "Study type", "Clinical Evicdence reported",
+      "Functional evidence", "Treatments reported", "Outcome observations"],
+  },
+  {
+    title: "Phenotype / Experimental Data",
+    icon: <Activity className="h-4 w-4" />,
+    fields: ["Age of onset", "Phenotype description", "EEG Findings",
+      "Functional Study (Y/N)", "Functional Result "],
+  },
+  {
+    title: "Clinical Interpretation",
+    icon: <Sparkles className="h-4 w-4" />,
+    fields: ["Severity", "Author classification", "Evidence Level"],
+  },
+  {
+    title: "Treatment / Outcome",
+    icon: <FlaskConical className="h-4 w-4" />,
+    fields: ["Treatments reported.1", "Response", "Outcome"],
+  },
+];
+
+function ReportCard({ record }: { record: Variant }) {
+  const pmid = record["PMID"];
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg">
+              {String(record["Gene"] ?? "")} <span className="text-muted-foreground font-normal">·</span>{" "}
+              <span className="font-mono">{String(record["Variant (cDNA)"] ?? "")}</span>{" "}
+              <span className="text-muted-foreground font-normal">({String(record["Protein"] ?? "")})</span>
+            </CardTitle>
+            <CardDescription>{String(record["Disease"] ?? "")}</CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {Boolean(record["ClinVar Classification"]) && (
+              <Badge variant="secondary">{String(record["ClinVar Classification"])}</Badge>
+            )}
+            {Boolean(record["Variant type"]) && (
+              <Badge variant="outline">{String(record["Variant type"])}</Badge>
+            )}
+            {Boolean(record["Inheritance"]) && (
+              <Badge variant="outline">{String(record["Inheritance"])}</Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {SECTIONS.map((sec) => {
+          const rows = sec.fields
+            .map((f) => [f, record[f]] as const)
+            .filter(([, v]) => v !== null && v !== undefined && v !== "");
+          if (rows.length === 0) return null;
+          return (
+            <div key={sec.title}>
+              <div className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                {sec.icon}
+                {sec.title}
+                {sec.title === "Literature Evidence" && Boolean(pmid) && (
+                  <a
+                    href={`https://pubmed.ncbi.nlm.nih.gov/${String(pmid).split(".")[0]}/`}
+                    target="_blank" rel="noreferrer"
+                    className="ml-auto text-xs font-normal text-primary underline underline-offset-2 hover:opacity-80"
+                  >
+                    PubMed: {String(pmid).split(".")[0]} ↗
+                  </a>
+                )}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                {rows.map(([f, v]) => (
+                  <div key={f} className="border-b border-dashed py-1.5">
+                    <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {f.replace(/\.1$/, "").trim()}
+                    </div>
+                    <div className="break-words">{String(v)}</div>
+                  </div>
+                ))}
+              </div>
+              <Separator className="mt-4" />
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
 }
