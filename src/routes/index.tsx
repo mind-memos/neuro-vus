@@ -397,13 +397,13 @@ function ReportCard({ record }: { record: Variant }) {
             <CardDescription>{String(record["Disease"] ?? "")}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            {record["ClinVar Classification"] && (
+            {Boolean(record["ClinVar Classification"]) && (
               <Badge variant="secondary">{String(record["ClinVar Classification"])}</Badge>
             )}
-            {record["Variant type"] && (
+            {Boolean(record["Variant type"]) && (
               <Badge variant="outline">{String(record["Variant type"])}</Badge>
             )}
-            {record["Inheritance"] && (
+            {Boolean(record["Inheritance"]) && (
               <Badge variant="outline">{String(record["Inheritance"])}</Badge>
             )}
           </div>
@@ -420,7 +420,7 @@ function ReportCard({ record }: { record: Variant }) {
               <div className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
                 {sec.icon}
                 {sec.title}
-                {sec.title === "Literature Evidence" && pmid && (
+                {sec.title === "Literature Evidence" && Boolean(pmid) && (
                   <a
                     href={`https://pubmed.ncbi.nlm.nih.gov/${String(pmid).split(".")[0]}/`}
                     target="_blank" rel="noreferrer"
