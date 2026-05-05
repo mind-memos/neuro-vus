@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X } from "lucide-react";
+import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X, ChevronDown, Info } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Progress } from "@/components/ui/progress";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -71,9 +73,9 @@ function matches(record: Variant, filters: Record<string, string>): boolean {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 7.5) return "bg-destructive text-destructive-foreground";
+  if (score >= 7) return "bg-destructive text-destructive-foreground";
   if (score >= 5.5) return "bg-amber-500 text-white";
-  if (score >= 4) return "bg-yellow-400 text-black";
+  if (score >= 3) return "bg-yellow-400 text-black";
   return "bg-emerald-600 text-white";
 }
 
@@ -275,7 +277,8 @@ function EmptyState() {
 }
 
 function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateScore>; matchCount: number }) {
-  const pct = ((score.score - 1) / 9) * 100;
+  const pct = (score.score / 10) * 100;
+  const [open, setOpen] = useState(false);
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -283,10 +286,10 @@ function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateSc
           <div>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
-              Pathogenicity Score
+              Pathogenicity Score (0–10)
             </CardTitle>
             <CardDescription>
-              Aggregated across {matchCount} matching report{matchCount === 1 ? "" : "s"} using ACMG-inspired evidence weighting.
+              Aggregated across {matchCount} matching report{matchCount === 1 ? "" : "s"} using a weighted ACMG-inspired framework.
             </CardDescription>
           </div>
           <div className={`px-4 py-3 rounded-xl text-3xl font-bold tabular-nums ${scoreColor(score.score)}`}>
@@ -295,7 +298,8 @@ function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateSc
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
+        {/* Gauge */}
         <div>
           <div className="h-3 w-full rounded-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-destructive relative">
             <div
@@ -304,27 +308,86 @@ function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateSc
             />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>1 — Benign</span>
+            <span>0 — Benign</span>
             <span>5.5 — VUS</span>
             <span>10 — Pathogenic</span>
           </div>
         </div>
-        <div>
-          <Badge className="mb-2">{score.label}</Badge>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {score.reasons.map((r, i) => (
-              <div key={i} className="text-xs flex items-start gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5">
-                <span className={`shrink-0 font-mono px-1.5 py-0.5 rounded ${r.delta >= 0 ? "bg-destructive/10 text-destructive" : "bg-emerald-600/10 text-emerald-700"}`}>
-                  {r.delta >= 0 ? "+" : ""}{r.delta.toFixed(1)}
-                </span>
-                <div>
-                  <div className="font-medium">{r.criterion}</div>
-                  <div className="text-muted-foreground">{r.detail}</div>
+
+        <div className="flex items-center gap-2">
+          <Badge>{score.label}</Badge>
+          <p className="text-xs text-muted-foreground">
+            This score is derived from integrated population, computational, structural, and clinical evidence to assist variant prioritization.
+          </p>
+        </div>
+
+        {/* Highlights */}
+        {score.highlights.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Key contributions</div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {score.highlights.map((h, i) => (
+                <div key={i} className="text-xs flex items-start gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5">
+                  <span className={`shrink-0 font-mono px-1.5 py-0.5 rounded ${h.delta >= 0 ? "bg-destructive/10 text-destructive" : "bg-emerald-600/10 text-emerald-700"}`}>
+                    {h.delta >= 0 ? "+" : ""}{h.delta.toFixed(2)}
+                  </span>
+                  <div className="text-foreground">{h.label}</div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Module breakdown */}
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Module breakdown</div>
+          <div className="space-y-2">
+            {score.modules.map((m) => {
+              const pctMod = m.max > 0 ? (m.score / m.max) * 100 : 0;
+              return (
+                <div key={m.name} className="rounded-md border bg-card px-3 py-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{m.name}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {m.used ? `${m.score.toFixed(2)} / ${m.max}` : "no data (neutral)"}
+                    </span>
+                  </div>
+                  {m.used && <Progress value={pctMod} className="h-1.5 mt-1.5" />}
+                </div>
+              );
+            })}
           </div>
         </div>
+
+        {/* Why this score? */}
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger asChild>
+            <button className="w-full flex items-center justify-between rounded-md border bg-primary/5 hover:bg-primary/10 transition px-3 py-2 text-sm font-medium">
+              <span className="flex items-center gap-2"><Info className="h-4 w-4 text-primary" /> Why this score?</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3 space-y-3">
+            <p className="text-sm leading-relaxed">{score.explanation}</p>
+            <div className="space-y-2">
+              {score.modules.filter(m => m.used && m.contributions.length > 0).map((m) => (
+                <div key={m.name} className="rounded-md border bg-muted/30 px-3 py-2">
+                  <div className="text-xs font-semibold mb-1">{m.name}</div>
+                  <ul className="space-y-1">
+                    {m.contributions.map((c, i) => (
+                      <li key={i} className="text-xs flex items-start gap-2">
+                        <span className={`shrink-0 font-mono px-1 rounded ${c.delta > 0 ? "text-destructive" : c.delta < 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
+                          {c.delta > 0 ? "+" : ""}{c.delta.toFixed(2)}
+                        </span>
+                        <span>{c.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   );
