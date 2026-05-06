@@ -280,7 +280,7 @@ function EmptyState() {
   );
 }
 
-function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateScore>; matchCount: number }) {
+function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof aggregateScore>; matchCount: number; onExport: () => void }) {
   const pct = (score.score / 10) * 100;
   const [open, setOpen] = useState(false);
   return (
