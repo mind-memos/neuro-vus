@@ -318,11 +318,14 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge>{score.label}</Badge>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
             This score is derived from integrated population, computational, structural, and clinical evidence to assist variant prioritization.
           </p>
+          <Button onClick={onExport} size="sm" variant="outline" className="gap-2">
+            <Download className="h-4 w-4" /> Export PDF
+          </Button>
         </div>
 
         {/* Highlights */}
