@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X, ChevronDown, Info } from "lucide-react";
+import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X, ChevronDown, Info, Download } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 
