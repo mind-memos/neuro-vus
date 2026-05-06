@@ -246,7 +246,11 @@ function Index() {
 
           {submitted && matched.length > 0 && (
             <>
-              <ScoreCard score={scoreInfo} matchCount={matched.length} />
+              <ScoreCard
+                score={scoreInfo}
+                matchCount={matched.length}
+                onExport={() => exportReportPDF(matched, scoreInfo, submitted)}
+              />
               {matched.map((r, idx) => (
                 <ReportCard key={idx} record={r} />
               ))}
