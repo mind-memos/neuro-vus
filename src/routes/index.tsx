@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X, ChevronDown, Info } from "lucide-react";
+import { Activity, Search, Sparkles, FlaskConical, BookOpen, Dna, X, ChevronDown, Info, Download } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 
@@ -77,6 +77,119 @@ function scoreColor(score: number): string {
   if (score >= 5.5) return "bg-amber-500 text-white";
   if (score >= 3) return "bg-yellow-400 text-black";
   return "bg-emerald-600 text-white";
+}
+
+function escapeHtml(s: unknown): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function exportReportPDF(
+  records: Variant[],
+  score: ReturnType<typeof aggregateScore>,
+  filters: Record<string, string>,
+) {
+  const activeFilters = Object.entries(filters).filter(([, v]) => v && v.trim() !== "");
+  const date = new Date().toLocaleString();
+  const first = records[0] ?? {};
+  const title = `${String(first["Gene"] ?? "Variant")} ${String(first["Variant (cDNA)"] ?? "")}`.trim();
+
+  const reportSections = records.map((r, i) => {
+    const sectionsHtml = SECTIONS.map((sec) => {
+      const rows = sec.fields
+        .map((f) => [f, r[f]] as const)
+        .filter(([, v]) => v !== null && v !== undefined && v !== "");
+      if (rows.length === 0) return "";
+      return `
+        <h3>${escapeHtml(sec.title)}</h3>
+        <table class="kv">
+          ${rows.map(([f, v]) => `
+            <tr><th>${escapeHtml(f.replace(/\.1$/, "").trim())}</th><td>${escapeHtml(v)}</td></tr>
+          `).join("")}
+        </table>`;
+    }).join("");
+    const pmid = r["PMID"] ? String(r["PMID"]).split(".")[0] : "";
+    return `
+      <section class="report">
+        <h2>Report ${i + 1}: ${escapeHtml(r["Gene"])} · ${escapeHtml(r["Variant (cDNA)"])} (${escapeHtml(r["Protein"])})</h2>
+        <p class="muted">${escapeHtml(r["Disease"] ?? "")}</p>
+        ${pmid ? `<p class="muted">PubMed: <a href="https://pubmed.ncbi.nlm.nih.gov/${escapeHtml(pmid)}/">${escapeHtml(pmid)}</a></p>` : ""}
+        ${sectionsHtml}
+      </section>`;
+  }).join("");
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>NeuroVUS Report — ${escapeHtml(title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; margin: 32px; font-size: 12px; line-height: 1.45; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 6px; padding-bottom: 4px; border-bottom: 2px solid #2563eb; color: #1e3a8a; }
+  h3 { font-size: 12px; margin: 14px 0 4px; color: #2563eb; text-transform: uppercase; letter-spacing: 0.04em; }
+  .muted { color: #555; font-size: 11px; margin: 2px 0; }
+  .header { border-bottom: 3px solid #2563eb; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .score-box { text-align: center; padding: 12px 18px; border-radius: 10px; color: #fff; min-width: 120px; }
+  .score-box .num { font-size: 28px; font-weight: bold; }
+  .score-box .lbl { font-size: 11px; opacity: 0.95; }
+  .bg-low { background: #059669; } .bg-mid { background: #f59e0b; } .bg-high { background: #dc2626; } .bg-vlow { background: #facc15; color: #111; }
+  table.kv { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.kv th { text-align: left; width: 35%; padding: 4px 8px; background: #f3f4f6; border: 1px solid #e5e7eb; font-weight: 600; vertical-align: top; }
+  table.kv td { padding: 4px 8px; border: 1px solid #e5e7eb; vertical-align: top; word-break: break-word; }
+  .modules { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .module { border: 1px solid #e5e7eb; padding: 6px 10px; border-radius: 6px; font-size: 11px; }
+  .module .n { font-weight: 600; }
+  .explain { background: #eff6ff; border-left: 3px solid #2563eb; padding: 10px 12px; border-radius: 4px; margin: 8px 0; }
+  .filters { background: #f9fafb; padding: 8px 12px; border-radius: 4px; font-size: 11px; }
+  .filters span { display: inline-block; background: #fff; border: 1px solid #d1d5db; padding: 2px 8px; border-radius: 999px; margin: 2px 4px 2px 0; }
+  section.report { page-break-inside: avoid; margin-top: 18px; }
+  ul.contrib { margin: 4px 0 8px 18px; padding: 0; font-size: 11px; }
+  @media print { body { margin: 18mm; } .no-print { display: none; } }
+</style></head><body>
+  <div class="header">
+    <div>
+      <h1>NeuroVUS Variant Classification Report</h1>
+      <p class="muted">Generated ${escapeHtml(date)}</p>
+      <p class="muted">${escapeHtml(title)} — ${records.length} matching report${records.length === 1 ? "" : "s"}</p>
+    </div>
+    <div class="score-box ${score.score >= 7 ? "bg-high" : score.score >= 5.5 ? "bg-mid" : score.score >= 3 ? "bg-vlow" : "bg-low"}">
+      <div class="num">${score.score.toFixed(1)}<span style="font-size:14px;opacity:0.8">/10</span></div>
+      <div class="lbl">${escapeHtml(score.label)}</div>
+    </div>
+  </div>
+
+  ${activeFilters.length ? `<div class="filters"><strong>Clinician inputs:</strong> ${activeFilters.map(([k, v]) => `<span><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</span>`).join("")}</div>` : ""}
+
+  <h2>Pathogenicity Assessment</h2>
+  <div class="explain"><strong>Why this score?</strong><br>${escapeHtml(score.explanation)}</div>
+
+  <h3>Module Breakdown</h3>
+  <div class="modules">
+    ${score.modules.map((m) => `
+      <div class="module">
+        <div class="n">${escapeHtml(m.name)}</div>
+        <div>${m.used ? `${m.score.toFixed(2)} / ${m.max}` : "no data (neutral)"}</div>
+        ${m.used && m.contributions.length ? `<ul class="contrib">${m.contributions.map((c) => `<li>${c.delta > 0 ? "+" : ""}${c.delta.toFixed(2)} — ${escapeHtml(c.label)}</li>`).join("")}</ul>` : ""}
+      </div>`).join("")}
+  </div>
+
+  ${score.highlights.length ? `<h3>Key Contributions</h3><ul>${score.highlights.map((h) => `<li><b>${h.delta >= 0 ? "+" : ""}${h.delta.toFixed(2)}</b> — ${escapeHtml(h.label)}</li>`).join("")}</ul>` : ""}
+
+  ${reportSections}
+
+  <p class="muted" style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:8px">
+    Disclaimer: This report is generated by an AI-assisted decision support tool (NeuroVUS Classifier) and is intended to aid clinical interpretation. It does not replace expert clinical judgment.
+  </p>
+  <script>window.onload = () => { setTimeout(() => window.print(), 300); };</script>
+</body></html>`;
+
+  const w = window.open("", "_blank");
+  if (!w) {
+    alert("Please allow pop-ups to export the PDF report.");
+    return;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 function Index() {
@@ -246,7 +359,11 @@ function Index() {
 
           {submitted && matched.length > 0 && (
             <>
-              <ScoreCard score={scoreInfo} matchCount={matched.length} />
+              <ScoreCard
+                score={scoreInfo}
+                matchCount={matched.length}
+                onExport={() => exportReportPDF(matched, scoreInfo, submitted)}
+              />
               {matched.map((r, idx) => (
                 <ReportCard key={idx} record={r} />
               ))}
@@ -276,7 +393,7 @@ function EmptyState() {
   );
 }
 
-function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateScore>; matchCount: number }) {
+function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof aggregateScore>; matchCount: number; onExport: () => void }) {
   const pct = (score.score / 10) * 100;
   const [open, setOpen] = useState(false);
   return (
@@ -314,11 +431,14 @@ function ScoreCard({ score, matchCount }: { score: ReturnType<typeof aggregateSc
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge>{score.label}</Badge>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
             This score is derived from integrated population, computational, structural, and clinical evidence to assist variant prioritization.
           </p>
+          <Button onClick={onExport} size="sm" variant="outline" className="gap-2">
+            <Download className="h-4 w-4" /> Export PDF
+          </Button>
         </div>
 
         {/* Highlights */}
