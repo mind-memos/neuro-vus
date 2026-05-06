@@ -375,6 +375,9 @@ function Index() {
           )}
         </section>
       </main>
+      <div className="fixed bottom-3 right-4 text-xs text-muted-foreground bg-card/80 backdrop-blur px-2.5 py-1 rounded-full border shadow-sm pointer-events-none z-20">
+        Created By: Arushi Ganguly
+      </div>
     </div>
   );
 }
