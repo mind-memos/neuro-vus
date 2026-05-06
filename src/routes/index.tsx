@@ -143,7 +143,10 @@ function exportReportPDF(
   .filters span { display: inline-block; background: #fff; border: 1px solid #d1d5db; padding: 2px 8px; border-radius: 999px; margin: 2px 4px 2px 0; }
   section.report { page-break-inside: avoid; margin-top: 18px; }
   ul.contrib { margin: 4px 0 8px 18px; padding: 0; font-size: 11px; }
-  @media print { body { margin: 18mm; } .no-print { display: none; } }
+  @page { margin: 18mm; @bottom-center { content: "Created By: Arushi Ganguly"; font-family: -apple-system, sans-serif; font-size: 10px; color: #555; } }
+  .print-footer { position: fixed; bottom: 6mm; left: 0; right: 0; text-align: center; font-size: 10px; color: #555; }
+  @media screen { .print-footer { position: static; margin-top: 24px; padding-top: 8px; border-top: 1px solid #e5e7eb; } }
+  @media print { body { margin: 18mm 18mm 24mm; } .no-print { display: none; } }
 </style></head><body>
   <div class="header">
     <div>
