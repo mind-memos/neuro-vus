@@ -503,7 +503,23 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-3 space-y-3">
-            <p className="text-sm leading-relaxed">{score.explanation}</p>
+            {score.keyDrivers.length > 0 && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Key drivers</div>
+                <ul className="space-y-1 text-sm">
+                  {score.keyDrivers.map((d, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                      <span>{d}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="rounded-md border bg-primary/5 px-3 py-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Interpretation</div>
+              <p className="text-sm leading-relaxed">{score.interpretation}</p>
+            </div>
             <div className="space-y-2">
               {score.modules.filter(m => m.used && m.contributions.length > 0).map((m) => (
                 <div key={m.name} className="rounded-md border bg-muted/30 px-3 py-2">
