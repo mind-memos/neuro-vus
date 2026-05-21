@@ -416,9 +416,14 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
               Aggregated across {matchCount} matching report{matchCount === 1 ? "" : "s"} using a weighted ACMG-inspired framework.
             </CardDescription>
           </div>
-          <div className={`px-4 py-3 rounded-xl text-3xl font-bold tabular-nums ${scoreColor(score.score)}`}>
-            {score.score.toFixed(1)}
-            <span className="text-sm font-normal opacity-80"> /10</span>
+          <div className="text-right">
+            <div className={`px-4 py-3 rounded-xl text-3xl font-bold tabular-nums ${scoreColor(score.score)}`}>
+              {score.score.toFixed(1)}
+              <span className="text-sm font-normal opacity-80"> /10</span>
+            </div>
+            <div className="text-xs mt-1.5 text-muted-foreground">
+              Confidence: <span className="font-semibold text-foreground">{score.confidenceLabel}</span> ({score.confidence.toFixed(2)})
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -440,6 +445,9 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
 
         <div className="flex items-center gap-2 flex-wrap">
           <Badge>{score.label}</Badge>
+          <Badge variant="outline" className="gap-1">
+            Confidence: {score.confidenceLabel} · {score.confidence.toFixed(2)}
+          </Badge>
           <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
             This score is derived from integrated population, computational, structural, and clinical evidence to assist variant prioritization.
           </p>
