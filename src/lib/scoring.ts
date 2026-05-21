@@ -57,65 +57,63 @@ function modPopulation(v: Variant): ModuleScore {
   return m;
 }
 
-// ─── Module 2: Functional Prediction (0–2) ───────────────────────────────
+// ─── Module 2: Functional Prediction — SIFT + PolyPhen (0–1.5) ───────────
 function modFunctional(v: Variant): ModuleScore {
-  const m: ModuleScore = { name: "Functional Prediction", score: 0, max: 2, contributions: [], used: false };
+  const m: ModuleScore = { name: "Functional Prediction", score: 0, max: 1.5, contributions: [], used: false };
   const sift = num(v["SIFT"]);
   const pp = num(v["PolyPhen"]);
-  const cadd = num(v["CADD"]);
-
-  if (sift !== null || pp !== null) {
-    m.used = true;
-    const siftDamaging = sift !== null && sift <= 0.05;
-    const ppDamaging = pp !== null && pp >= 0.85;
-    const siftBenign = sift !== null && sift > 0.3;
-    const ppBenign = pp !== null && pp < 0.2;
-    let pts = 0, label = "";
-    if ((sift !== null && pp !== null) && siftDamaging && ppDamaging) {
-      pts = 1; label = `SIFT ${sift} + PolyPhen ${pp}: both damaging`;
-    } else if ((sift !== null && pp !== null) && siftBenign && ppBenign) {
-      pts = 0; label = `SIFT ${sift} + PolyPhen ${pp}: both benign`;
-    } else if (siftDamaging || ppDamaging) {
-      pts = 0.5; label = `Mixed predictions (SIFT ${sift ?? "—"}, PolyPhen ${pp ?? "—"})`;
-    } else {
-      pts = 0; label = `Predictions not damaging (SIFT ${sift ?? "—"}, PolyPhen ${pp ?? "—"})`;
-    }
-    m.contributions.push({ label, delta: pts });
+  if (sift === null && pp === null) return m;
+  m.used = true;
+  const siftDamaging = sift !== null && sift <= 0.05;
+  const ppDamaging = pp !== null && pp >= 0.85;
+  const siftBenign = sift !== null && sift > 0.3;
+  const ppBenign = pp !== null && pp < 0.2;
+  let pts = 0, label = "";
+  if ((sift !== null && pp !== null) && siftDamaging && ppDamaging) {
+    pts = 1.5; label = `SIFT ${sift} + PolyPhen ${pp}: both damaging`;
+  } else if ((sift !== null && pp !== null) && siftBenign && ppBenign) {
+    pts = 0; label = `SIFT ${sift} + PolyPhen ${pp}: both benign`;
+  } else if (siftDamaging || ppDamaging) {
+    pts = 0.75; label = `Mixed predictions (SIFT ${sift ?? "—"}, PolyPhen ${pp ?? "—"})`;
+  } else {
+    pts = 0; label = `Predictions not damaging (SIFT ${sift ?? "—"}, PolyPhen ${pp ?? "—"})`;
   }
-
-  if (cadd !== null) {
-    m.used = true;
-    let pts = 0, label = "";
-    if (cadd >= 20) { pts = 1; label = `CADD ${cadd} (deleterious)`; }
-    else if (cadd >= 10) { pts = 0.5; label = `CADD ${cadd} (intermediate)`; }
-    else { pts = 0; label = `CADD ${cadd} (low)`; }
-    m.contributions.push({ label, delta: pts });
-  }
-
-  const total = m.contributions.reduce((a, b) => a + b.delta, 0);
-  m.score = Math.min(m.max, total);
+  m.contributions.push({ label, delta: pts });
+  m.score = Math.min(m.max, pts);
   return m;
 }
 
-// ─── Module 3: Conservation + Domain (0–2) ───────────────────────────────
-function modConservation(v: Variant): ModuleScore {
-  const m: ModuleScore = { name: "Conservation & Domain", score: 0, max: 2, contributions: [], used: false };
+// ─── Module 3: Computational Evidence — CADD + Conservation + Domain (0–2.5) ──
+// Prevents double-counting: if both PhyloP and PhastCons present, CADD is capped at 0.5.
+function modComputational(v: Variant): ModuleScore {
+  const m: ModuleScore = { name: "Computational Evidence (CADD + Conservation)", score: 0, max: 2.5, contributions: [], used: false };
+  const cadd = num(v["CADD"]);
   const phylo = num(v["PhyloP"]);
   const phast = num(v["PhastCons"]);
   const dom = str(v["Protein domain"]);
+  const bothConservation = phylo !== null && phast !== null;
 
+  if (cadd !== null) {
+    m.used = true;
+    let pts = 0;
+    if (cadd >= 20) pts = 1;
+    else if (cadd >= 10) pts = 0.5;
+    if (bothConservation) pts = Math.min(pts, 0.5); // cap CADD when conservation already represented
+    const note = bothConservation && pts > 0 ? " (capped, conservation present)" : "";
+    m.contributions.push({ label: `CADD ${cadd}${note}`, delta: pts });
+  }
   if (phylo !== null) {
     m.used = true;
     let pts = 0;
-    if (phylo >= 2) pts = 1;
-    else if (phylo >= 1) pts = 0.5;
+    if (phylo >= 2) pts = 0.75;
+    else if (phylo >= 1) pts = 0.4;
     m.contributions.push({ label: `PhyloP ${phylo}`, delta: pts });
   }
   if (phast !== null) {
     m.used = true;
     let pts = 0;
-    if (phast >= 0.7) pts = 1;
-    else if (phast >= 0.3) pts = 0.5;
+    if (phast >= 0.7) pts = 0.75;
+    else if (phast >= 0.3) pts = 0.4;
     m.contributions.push({ label: `PhastCons ${phast}`, delta: pts });
   }
   if (dom) {
