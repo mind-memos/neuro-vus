@@ -157,13 +157,15 @@ function exportReportPDF(
     <div class="score-box ${score.score >= 7 ? "bg-high" : score.score >= 5.5 ? "bg-mid" : score.score >= 3 ? "bg-vlow" : "bg-low"}">
       <div class="num">${score.score.toFixed(1)}<span style="font-size:14px;opacity:0.8">/10</span></div>
       <div class="lbl">${escapeHtml(score.label)}</div>
+      <div class="lbl" style="margin-top:4px;font-size:10px">Confidence: ${escapeHtml(score.confidenceLabel)} (${score.confidence.toFixed(2)})</div>
     </div>
   </div>
 
   ${activeFilters.length ? `<div class="filters"><strong>Clinician inputs:</strong> ${activeFilters.map(([k, v]) => `<span><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</span>`).join("")}</div>` : ""}
 
   <h2>Pathogenicity Assessment</h2>
-  <div class="explain"><strong>Why this score?</strong><br>${escapeHtml(score.explanation)}</div>
+  ${score.keyDrivers.length ? `<div class="explain"><strong>Key Drivers:</strong><ul style="margin:6px 0 0 18px;padding:0">${score.keyDrivers.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul></div>` : ""}
+  <div class="explain"><strong>Interpretation:</strong><br>${escapeHtml(score.interpretation)}</div>
 
   <h3>Module Breakdown</h3>
   <div class="modules">
@@ -416,9 +418,14 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
               Aggregated across {matchCount} matching report{matchCount === 1 ? "" : "s"} using a weighted ACMG-inspired framework.
             </CardDescription>
           </div>
-          <div className={`px-4 py-3 rounded-xl text-3xl font-bold tabular-nums ${scoreColor(score.score)}`}>
-            {score.score.toFixed(1)}
-            <span className="text-sm font-normal opacity-80"> /10</span>
+          <div className="text-right">
+            <div className={`px-4 py-3 rounded-xl text-3xl font-bold tabular-nums ${scoreColor(score.score)}`}>
+              {score.score.toFixed(1)}
+              <span className="text-sm font-normal opacity-80"> /10</span>
+            </div>
+            <div className="text-xs mt-1.5 text-muted-foreground">
+              Confidence: <span className="font-semibold text-foreground">{score.confidenceLabel}</span> ({score.confidence.toFixed(2)})
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -440,6 +447,9 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
 
         <div className="flex items-center gap-2 flex-wrap">
           <Badge>{score.label}</Badge>
+          <Badge variant="outline" className="gap-1">
+            Confidence: {score.confidenceLabel} · {score.confidence.toFixed(2)}
+          </Badge>
           <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
             This score is derived from integrated population, computational, structural, and clinical evidence to assist variant prioritization.
           </p>
@@ -495,7 +505,23 @@ function ScoreCard({ score, matchCount, onExport }: { score: ReturnType<typeof a
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent className="pt-3 space-y-3">
-            <p className="text-sm leading-relaxed">{score.explanation}</p>
+            {score.keyDrivers.length > 0 && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Key drivers</div>
+                <ul className="space-y-1 text-sm">
+                  {score.keyDrivers.map((d, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                      <span>{d}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="rounded-md border bg-primary/5 px-3 py-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Interpretation</div>
+              <p className="text-sm leading-relaxed">{score.interpretation}</p>
+            </div>
             <div className="space-y-2">
               {score.modules.filter(m => m.used && m.contributions.length > 0).map((m) => (
                 <div key={m.name} className="rounded-md border bg-muted/30 px-3 py-2">
