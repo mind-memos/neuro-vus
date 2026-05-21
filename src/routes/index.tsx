@@ -157,13 +157,15 @@ function exportReportPDF(
     <div class="score-box ${score.score >= 7 ? "bg-high" : score.score >= 5.5 ? "bg-mid" : score.score >= 3 ? "bg-vlow" : "bg-low"}">
       <div class="num">${score.score.toFixed(1)}<span style="font-size:14px;opacity:0.8">/10</span></div>
       <div class="lbl">${escapeHtml(score.label)}</div>
+      <div class="lbl" style="margin-top:4px;font-size:10px">Confidence: ${escapeHtml(score.confidenceLabel)} (${score.confidence.toFixed(2)})</div>
     </div>
   </div>
 
   ${activeFilters.length ? `<div class="filters"><strong>Clinician inputs:</strong> ${activeFilters.map(([k, v]) => `<span><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</span>`).join("")}</div>` : ""}
 
   <h2>Pathogenicity Assessment</h2>
-  <div class="explain"><strong>Why this score?</strong><br>${escapeHtml(score.explanation)}</div>
+  ${score.keyDrivers.length ? `<div class="explain"><strong>Key Drivers:</strong><ul style="margin:6px 0 0 18px;padding:0">${score.keyDrivers.map(d => `<li>${escapeHtml(d)}</li>`).join("")}</ul></div>` : ""}
+  <div class="explain"><strong>Interpretation:</strong><br>${escapeHtml(score.interpretation)}</div>
 
   <h3>Module Breakdown</h3>
   <div class="modules">
