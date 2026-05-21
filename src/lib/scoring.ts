@@ -242,60 +242,106 @@ function labelFor(score: number): string {
   return "Likely Benign";
 }
 
-function buildExplanation(modules: ModuleScore[], score: number, label: string): string {
-  const parts: string[] = [];
-  const pop = modules[0], fn = modules[1], cons = modules[2], gen = modules[3], str_ = modules[4];
+// Generate clinician-style "Key Drivers": top 3–4 strongest, non-redundant evidence statements.
+function buildKeyDrivers(modules: ModuleScore[]): string[] {
+  const drivers: { text: string; weight: number; tag: string }[] = [];
+  const seenTags = new Set<string>();
+  const push = (tag: string, text: string, weight: number) => {
+    if (seenTags.has(tag)) return;
+    seenTags.add(tag);
+    drivers.push({ tag, text, weight });
+  };
 
-  if (pop.used) {
-    const top = pop.contributions[0]?.label.toLowerCase() ?? "";
-    if (pop.score >= 1.5) parts.push(`is ${top}`);
-    else if (pop.score <= 0.5) parts.push(`appears at ${top}`);
+  const byName = (n: string) => modules.find(m => m.name === n);
+  const pop = byName("Population Frequency");
+  const fn = byName("Functional Prediction");
+  const comp = byName("Computational Evidence (CADD + Conservation)");
+  const gen = byName("Genetic Evidence");
+  const struct = byName("Structural Impact");
+
+  if (pop?.used) {
+    if (pop.score >= 1.5) push("pop", "Absent or ultra-rare in population databases", pop.score);
+    else if (pop.score <= 0.25) push("pop", "Observed at appreciable population frequency", -1);
   }
-  if (str_.used) {
-    const lof = str_.contributions.find(c => /loss-of-function|frameshift|nonsense|splice/i.test(c.label));
-    if (lof) parts.push(`results in a ${lof.label.toLowerCase()}`);
-    else if (str_.score >= 0.75) parts.push("alters protein sequence in a non-conservative manner");
+  if (struct?.used) {
+    const lof = struct.contributions.find(c => /loss-of-function|frameshift|nonsense|splice/i.test(c.label));
+    if (lof) push("struct", "Predicted loss-of-function variant", 1.5);
+    else {
+      const nonCons = struct.contributions.find(c => /non-conservative/i.test(c.label));
+      if (nonCons) push("struct", "Non-conservative amino acid substitution", 1);
+    }
   }
-  if (fn.used && fn.score >= 1) parts.push("is predicted damaging by computational tools");
-  if (cons.used && cons.score >= 1) parts.push("affects an evolutionarily conserved or critical region");
-  if (gen.used) {
+  if (gen?.used) {
     const dn = gen.contributions.find(c => /de novo/i.test(c.label) && c.delta > 0);
-    const seg = gen.contributions.find(c => /segregation/i.test(c.label) && c.delta > 0);
-    if (dn) parts.push("occurs de novo");
-    if (seg) parts.push(seg.label.toLowerCase());
+    if (dn) push("denovo", "Occurs de novo", 1.2);
+    const seg = gen.contributions.find(c => /segregation in/i.test(c.label) && c.delta > 0);
+    if (seg) push("seg", seg.label, seg.delta);
+    const inh = gen.contributions.find(c => /consistent/i.test(c.label) && c.delta > 0);
+    if (inh) push("inh", "Inheritance pattern consistent with disease", 0.5);
+  }
+  if (comp?.used && comp.score >= 1.5) {
+    push("comp", "Affects a highly conserved or critical functional region", comp.score);
+  } else if (comp?.used && comp.score >= 0.75) {
+    push("comp", "Moderate computational/conservation support", comp.score);
+  }
+  if (fn?.used && fn.score >= 1) {
+    push("fn", "Predicted damaging by in-silico tools (SIFT/PolyPhen)", fn.score);
   }
 
-  const subject = "This variant";
-  const body = parts.length > 0 ? parts.join(", ") : "has limited supporting evidence across the evaluated modules";
-  const verdict =
-    score >= 7 ? "strongly suggesting functional disruption and a likely pathogenic role."
-    : score >= 5.5 ? "leaning toward a pathogenic interpretation, though further evidence is recommended."
-    : score >= 3 ? "with insufficient evidence for pathogenicity; classification leans benign."
-    : "consistent with a likely benign interpretation.";
-  return `${subject} ${body}, ${verdict} Overall score: ${score.toFixed(1)}/10 (${label}).`;
+  return drivers
+    .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+    .slice(0, 4)
+    .map(d => d.text);
 }
 
-export function scoreVariant(v: Variant): ScoreBreakdown {
-  const modules = [modPopulation(v), modFunctional(v), modConservation(v), modGenetic(v), modStructural(v)];
+function buildInterpretation(drivers: string[], score: number, label: string): string {
+  if (drivers.length === 0) {
+    return `Limited evidence is available across the evaluated modules; the score (${score.toFixed(1)}/10) reflects ${label.toLowerCase()}.`;
+  }
+  const lead = drivers.slice(0, 3).join(", ").toLowerCase();
+  const verdict =
+    score >= 7 ? "strongly supports a pathogenic role."
+    : score >= 5.5 ? "leans toward pathogenicity, though further evidence is recommended."
+    : score >= 3 ? "is insufficient to support pathogenicity; classification leans benign."
+    : "is consistent with a benign interpretation.";
+  return `The combination of ${lead} ${verdict}`;
+}
 
-  // Sum of caps for modules that had data; normalize to 0–10.
+function confidenceLabelFor(c: number): string {
+  if (c >= 0.75) return "High";
+  if (c >= 0.5) return "Moderate";
+  return "Low";
+}
+
+const TOTAL_MODULES = 5;
+
+function finalize(modules: ModuleScore[], suffix = ""): ScoreBreakdown {
   const usedMaxSum = modules.filter(m => m.used).reduce((a, b) => a + b.max, 0);
   const rawSum = modules.reduce((a, b) => a + b.score, 0);
   const score = usedMaxSum > 0
     ? Math.max(0, Math.min(10, Math.round((rawSum / usedMaxSum) * 10 * 10) / 10))
-    : 5; // no data → neutral midpoint
-
+    : 5;
   const label = labelFor(score);
 
-  // Highlights = top contributors across all modules
+  const confidence = Math.round((modules.filter(m => m.used).length / TOTAL_MODULES) * 100) / 100;
+  const confidenceLabel = confidenceLabelFor(confidence);
+
   const highlights = modules
     .flatMap(m => m.contributions.map(c => ({ label: c.label, delta: c.delta })))
     .filter(c => Math.abs(c.delta) >= 0.5)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
     .slice(0, 6);
 
-  const explanation = buildExplanation(modules, score, label);
-  return { score, label, explanation, modules, highlights };
+  const keyDrivers = buildKeyDrivers(modules);
+  const interpretation = buildInterpretation(keyDrivers, score, label) + suffix;
+  const explanation = interpretation;
+
+  return { score, label, explanation, keyDrivers, interpretation, confidence, confidenceLabel, modules, highlights };
+}
+
+export function scoreVariant(v: Variant): ScoreBreakdown {
+  const modules = [modPopulation(v), modFunctional(v), modComputational(v), modGenetic(v), modStructural(v)];
+  return finalize(modules);
 }
 
 export function aggregateScore(records: Variant[]): ScoreBreakdown {
@@ -303,14 +349,14 @@ export function aggregateScore(records: Variant[]): ScoreBreakdown {
     return {
       score: 5, label: "No matching evidence",
       explanation: "No curated reports matched the selected criteria.",
+      keyDrivers: [], interpretation: "No curated reports matched the selected criteria.",
+      confidence: 0, confidenceLabel: "Low",
       modules: [], highlights: [],
     };
   }
   if (records.length === 1) return scoreVariant(records[0]);
 
   const all = records.map(scoreVariant);
-  const score = Math.round((all.reduce((a, b) => a + b.score, 0) / all.length) * 10) / 10;
-  const label = labelFor(score);
 
   // Merge modules by name (average used scores)
   const merged: Record<string, ModuleScore> = {};
@@ -334,12 +380,5 @@ export function aggregateScore(records: Variant[]): ScoreBreakdown {
     merged[name].score = Math.round((merged[name].score / c) * 100) / 100;
   }
   const modules = Object.values(merged);
-  const highlights = modules
-    .flatMap(m => m.contributions.map(c => ({ label: c.label, delta: c.delta })))
-    .filter(c => Math.abs(c.delta) >= 0.5)
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, 6);
-  const explanation = buildExplanation(modules, score, label) +
-    ` Aggregated across ${records.length} matching reports.`;
-  return { score, label, explanation, modules, highlights };
+  return finalize(modules, ` Aggregated across ${records.length} matching reports.`);
 }
