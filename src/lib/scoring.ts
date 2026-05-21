@@ -29,7 +29,11 @@ export interface ModuleScore {
 export interface ScoreBreakdown {
   score: number;             // 0–10 normalized
   label: string;             // interpretive label
-  explanation: string;       // plain-language "Why this score?"
+  explanation: string;       // plain-language summary (interpretation)
+  keyDrivers: string[];      // top 3–4 strongest evidence statements
+  interpretation: string;    // 1–2 sentence clinical interpretation
+  confidence: number;        // 0–1, fraction of modules with data
+  confidenceLabel: string;   // High / Moderate / Low
   modules: ModuleScore[];
   highlights: { label: string; delta: number }[]; // top contributing items
 }
